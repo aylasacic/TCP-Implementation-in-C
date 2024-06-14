@@ -181,8 +181,8 @@ a
         }
     } else if (recvpkt->hdr.ackno > send_base) {
         send_base = recvpkt->hdr.ackno;
-        last_ack = recvpkt-
-        dup_ack_count = 0; // Reset the counter on new ACK
+        last_ack = recvpkt-;
+        dup_ack_count = 0; 
 
         if (send_base == next_seqno) {
             stop_timer();
@@ -224,7 +224,7 @@ a
         recvpkt = (tcp_packet *)buffer;
         VLOG(DEBUG, "Rec EOF ACK, ackno: %d | %d", recvpkt->hdr.ackno, next_seqno + 1);
 
-        if (recvpkt->hdr.ackno >= next_seqno + END_ACK) {  // Adjust condition to check for the correct ACK
+        if (recvpkt->hdr.ackno >= next_seqno + END_ACK) { 
             exit(0);
         }
     }
@@ -237,7 +237,6 @@ a
 	exit(0);
     }
 
-    // Reset the socket to blocking mode
     timeout.tv_sec = 0;
     timeout.tv_usec = 0;
     setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
