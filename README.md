@@ -1,4 +1,4 @@
-Project 2: Transmission Control Protocol
+# Project 2: Transmission Control Protocol
 
 How to run:
 1. ```cd starter_code```
