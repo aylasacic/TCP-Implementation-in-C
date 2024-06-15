@@ -66,4 +66,4 @@ cd starter_code/obj
 ./rdt_sender $MAHIMAHI_BASE 5454 sample.txt
 ```
 
-By following these steps, you should be able to run the project successfully. If you encounter any issues, please refer to the repository documentation or seek help from the project maintainers.
+By following these steps, you should be able to run the project successfully. If you encounter any issues, please contact me!
