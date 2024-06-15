@@ -1,21 +1,42 @@
 #include <stdio.h>
+
 #include <unistd.h>
+
 #include <stdlib.h>
+
 #include <string.h>
+
 #include <sys/types.h>
+
 #include <sys/socket.h>
+
 #include <netinet/in.h>
+
 #include <arpa/inet.h>
+
 #include <sys/time.h>
+
 #include <assert.h>
+
 #include <errno.h>
+
 #include <signal.h>
+
 #include "common.h"
+
 #include "packet.h"
+
+#define MAX_TIMEOUT 20
+
+/*
+ * You are required to change the implementation to support
+ * window size greater than one.
+ * In the current implementation the window size is one, hence we have
+ * only one send and receive packet
+*/
 
 tcp_packet * recvpkt;
 tcp_packet * sndpkt;
-int counter = 0;
 struct timeval start_time; // Global variable to store start time
 
 /* 
@@ -61,51 +82,70 @@ void stop_timer() {
 }
 
 int main(int argc, char ** argv) {
-  int sockfd;
-  int portno;
-  int clientlen;
-  struct sockaddr_in serveraddr;
-  struct sockaddr_in clientaddr;
-  int optval;
-  FILE * fp;
+  int sockfd; /* socket */
+  int portno; /* port to listen on */
+  int clientlen; /* byte size of client's address */
+  struct sockaddr_in serveraddr; /* server's addr */
+  struct sockaddr_in clientaddr; /* client addr */
+  int optval; /* flag value for setsockopt */
+  FILE *fp;
   char buffer[MSS_SIZE];
   struct timeval tp;
   int seqno = 0;
-
+  /* 
+    Check command line arguments 
+   */
   if (argc != 3) {
     fprintf(stderr, "usage: %s <port> FILE_RECVD\n", argv[0]);
     exit(1);
   }
   portno = atoi(argv[1]);
 
-  fp = fopen(argv[2], "w");
+  fp = fopen(argv[2], "w"); // Open file for writing received data
   if (fp == NULL) {
-    error(argv[2]);
+    error(argv[2]); // Print error message if file opening fails
   }
-
+  
+  /* 
+    Create the parent socket 
+   */
   sockfd = socket(AF_INET, SOCK_DGRAM, 0);
   if (sockfd < 0)
     error("ERROR opening socket");
 
+  /* setsockopt: Handy debugging trick that lets 
+   * us rerun the server immediately after we kill it; 
+   * otherwise we have to wait about 20 secs. 
+   * Eliminates "ERROR on binding: Address already in use" error. 
+   */
   optval = 1;
   setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, (const void * ) & optval, sizeof(int));
 
+  /*
+   * build the server's Internet address
+   */
   bzero((char * ) & serveraddr, sizeof(serveraddr));
   serveraddr.sin_family = AF_INET;
   serveraddr.sin_addr.s_addr = htonl(INADDR_ANY);
   serveraddr.sin_port = htons((unsigned short) portno);
 
+  /* 
+   * bind: associate the parent socket with a port 
+   */
   if (bind(sockfd, (struct sockaddr * ) & serveraddr, sizeof(serveraddr)) < 0)
     error("ERROR on binding");
 
+  /* 
+   * main loop: wait for a datagram, then echo it
+   */
   VLOG(DEBUG, "epoch time, bytes received, sequence number");
 
   clientlen = sizeof(clientaddr);
   int eof_received = 0;
   while (1) {
     /*
-          receive a UDP datagram from a client
-        */
+      receive a UDP datagram from a client
+    */
     if (recvfrom(sockfd, buffer, MSS_SIZE, 0, (struct sockaddr * ) & clientaddr, (socklen_t * ) & clientlen) < 0) {
       error("ERROR in recvfrom");
     }
@@ -113,11 +153,10 @@ int main(int argc, char ** argv) {
     assert(get_data_size(recvpkt) <= DATA_SIZE);
 
     /* 
-    Check for End Of File indication
+      check for End Of File indication
     */
     if (recvpkt -> hdr.data_size == 0) {
-      counter = 1;
-      VLOG(INFO, "End Of File has been reached");
+      VLOG(INFO, "Received EOF packet! Sending EOF ACK!");
       sndpkt = make_packet(0);
       sndpkt -> hdr.ackno = recvpkt -> hdr.seqno + 1;
       sndpkt -> hdr.ctr_flags = ACK;
@@ -125,18 +164,25 @@ int main(int argc, char ** argv) {
       if (sendto(sockfd, sndpkt, TCP_HDR_SIZE, 0, (struct sockaddr * ) & clientaddr, clientlen) < 0) {
         error("ERROR in sendto");
       }
+
+      /* check if EOF has not been received before */
       if (!eof_received) {
-        printf("Starting 20 second timeout time for TCP closure!\n");
-        start_timer(20); /* start a 10 second timer */
+        VLOG(INFO, "Starting 20 second timeout time for TCP closure!\n");
+        start_timer(20); /* start a 20 second timer */
         eof_received = 1;
       }
     }
 
-    if (recvpkt -> hdr.seqno == seqno) {
+    /* 
+      check if the received packet's sequence number matches the expected sequence number 
+      and the data size is greater than 0 
+    */
+    if (recvpkt -> hdr.seqno == seqno && recvpkt -> hdr.data_size > 0) {
+      /* if EOF was received previously, reset the timer */
       if (eof_received) {
         stop_timer();
         eof_received = 0;
-        start_timer(20);
+        start_timer(MAX_TIMEOUT);
       }
       /* 
       	log received packet information and write data to file
@@ -150,13 +196,24 @@ int main(int argc, char ** argv) {
       sndpkt -> hdr.ackno = recvpkt -> hdr.seqno + recvpkt -> hdr.data_size; // Set acknowledgment number
       sndpkt -> hdr.ctr_flags = ACK; // Set control flags to indicate acknowledgment
       /* 
-        	Send acknowledgment back to the client 
-        */
+        send acknowledgment back to the client 
+      */
       if (sendto(sockfd, sndpkt, TCP_HDR_SIZE, 0, (struct sockaddr * ) & clientaddr, clientlen) < 0) {
         error("ERROR in sendto");
       }
+      if (recvpkt -> hdr.data_size < DATA_SIZE) {
+        VLOG(INFO, "Last packet received.\n");
+        VLOG(INFO, "End Of File has been reached! Closing file...\n");
+        fclose(fp);
+      }
 
     } else {
+      /* if EOF was received previously, reset the timer */
+      if (eof_received) {
+        stop_timer();
+        eof_received = 0;
+        start_timer(MAX_TIMEOUT);
+      }
       /* if out-of-order packet received, send duplicate ACK */
       sndpkt = make_packet(0);
       sndpkt -> hdr.ackno = seqno;
@@ -166,6 +223,5 @@ int main(int argc, char ** argv) {
       }
     }
   }
-  fclose(fp);
   return 0;
 }
