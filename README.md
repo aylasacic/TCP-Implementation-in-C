@@ -62,8 +62,7 @@ cd ../obj
 
 # In the second terminal
 cd starter_code/obj
-# Follow MAHIMAHI setup instructions
-./rdt_sender $MAHIMAHI_BASE 5454 sample.txt
+# Follow MAHIMAHI setup instructions (two terminals opened)
 ```
 
 By following these steps, you should be able to run the project successfully. If you encounter any issues, please contact me!
