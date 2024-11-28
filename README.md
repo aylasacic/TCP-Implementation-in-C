@@ -1,5 +1,5 @@
 
-# Project 2: Transmission Control Protocol
+# Transmission Control Protocol
 
 ## How to Run
 
